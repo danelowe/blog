@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Blog Name</title>
+  <subtitle>Blog subtitle</subtitle>
+  <id>http://blog.url.com/</id>
+  <link href="http://blog.url.com/"/>
+  <link href="http://blog.url.com/feed.xml" rel="self"/>
+  <updated>2013-04-19T20:14:00Z</updated>
+  <author>
+    <name>Blog Author</name>
+  </author>
+  <entry>
+    <title>How to get an EAV product collection when Flat Catalog is Enabled</title>
+    <link rel="alternate" href="http://blog.url.com/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html"/>
+    <id>http://blog.url.com/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html</id>
+    <published>2013-04-19T20:14:00Z</published>
+    <updated>2014-02-17T11:06:46+13:00</updated>
+    <author>
+      <name>Article Author</name>
+    </author>
+    <content type="html">&lt;p&gt;There are certain times when your attribute filters just won't work when you're using a flat catalog product collection, namely when you're filtering by multivalued attributes, or attributes not in the index.&lt;/p&gt;
+
+&lt;p&gt;This simple fix will allow you to programmatically choose whether the collection should act as an EAV collection or as the default collection specified by admin.&lt;/p&gt;
+
+&lt;p&gt;The description assumes you already have an extension set up (of course you already have one set up if you need this)&lt;/p&gt;
+
+&lt;p&gt;Create a Resource Model that overloads Mage_Catalog_Model_Resource_Product_Collection&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="sd"&gt;/**
+* Override core Product Collection Model to allow programmatically disabling flat catalog.
+*/&lt;/span&gt;
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;Avid_TTCatalog_Model_Rewrite_Catalog_Resource_Product_Collection&lt;/span&gt; &lt;span class="k"&gt;extends&lt;/span&gt; &lt;span class="nx"&gt;Mage_Catalog_Model_Resource_Product_Collection&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="nv"&gt;$_disableFlat&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;isEnabledFlat&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_disableFlat&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="k"&gt;parent&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;isEnabledFlat&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;setDisableFlat&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$value&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_disableFlat&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;boolean&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="nv"&gt;$value&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="nv"&gt;$type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$value&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt; &lt;span class="s1"&gt;'catalog/product'&lt;/span&gt; &lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="s1"&gt;'catalog/product_flat'&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;setEntity&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getResourceSingleton&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$type&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;
+&lt;p&gt;And of course define the overload in your extension's config.xml&lt;/p&gt;
+
+&lt;pre class="highlight xml"&gt;&lt;span class="cp"&gt;&amp;lt;?xml version="1.0" encoding="UTF-8"?&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;config&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;modules&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;Avid_TTCatalog&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;version&amp;gt;&lt;/span&gt;0.1.0&lt;span class="nt"&gt;&amp;lt;/version&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/Avid_TTCatalog&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;/modules&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;global&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;models&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;catalog_resource&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;rewrite&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;product_collection&amp;gt;&lt;/span&gt;Avid_TTCatalog_Model_Rewrite_Catalog_Resource_Product_Collection&lt;span class="nt"&gt;&amp;lt;/product_collection&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;/rewrite&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;/catalog_resource&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/models&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;/global&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/config&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;
+&lt;p&gt;Then, you can disable flat catalog on any product collection immediately after instantiating it, e.g.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="nv"&gt;$collection&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getModel&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog/product'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getCollection&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;setDisableFlat&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;/pre&gt;</content>
+  </entry>
+</feed>
