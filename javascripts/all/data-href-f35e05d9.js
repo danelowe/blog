@@ -1,1 +1,0 @@
-$(function(){return $("[data-href]").click(function(a){return a.ctrlKey||a.metaKey?window.open($(this).data("href")):"undefined"!==typeof Turbolinks&&null!==Turbolinks?Turbolinks.a($(this).data("href")):window.location=$(this).data("href")})});
