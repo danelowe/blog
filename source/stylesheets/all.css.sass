@@ -3,6 +3,7 @@
 @import susy
 @import normalize
 @import rouge
+@import icon_font
 
 $base-font-size: 16px
 $base-line-height: 24px
@@ -39,6 +40,12 @@ body
       text-transform: uppercase
       color: $text-color-lighter
       text-decoration: none
+      &::before
+        float: left
+        margin: 0 0.5em 0 0
+        color: $color-highlight
+        font-family: 'icomoon'
+        content: '\e603'
     .tags_list
       float: right
   > footer
