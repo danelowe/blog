@@ -120,12 +120,19 @@ pre
       float: right
     .post
       padding: 0
+      border: 0px none
       h2 a
         color: $color-highlight
         text-decoration: underline
+      &:hover
+        background: transparent
+        border: 0px none
   .post
+    .tags_list
+      float: right
     .data, .intro, .content
       +reset-columns
+      padding: 0
   body > footer
     .column, .column:last-of-type
       +reset-columns
