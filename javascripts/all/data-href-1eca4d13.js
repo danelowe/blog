@@ -1,1 +1,0 @@
-(function(d){return d(function(){return d("[data-href]").click(function(e){return e.ctrlKey||e.metaKey?window.open(d(this).data("href")):"undefined"!==typeof Turbolinks&&null!==Turbolinks?Turbolinks.d(d(this).data("href")):window.location=d(this).data("href")})})})(window.c||window.b||window.a);

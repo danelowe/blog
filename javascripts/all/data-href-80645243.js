@@ -1,0 +1,1 @@
+(function(){(function(a){return a(function(){return a("[data-href]").click(function(b){return b.ctrlKey||b.metaKey?window.open(a(this).data("href")):"undefined"!==typeof Turbolinks&&null!==Turbolinks?Turbolinks.visit(a(this).data("href")):window.location=a(this).data("href")})})})(window.jQuery||window.ender||window.Zepto)}).call(this);
