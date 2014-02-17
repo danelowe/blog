@@ -94,7 +94,9 @@ configure :build do
   activate :minify_css
 
   # Minify Javascript on build
+  require 'closure-compiler'
   activate :minify_javascript
+  set :js_compressor, ::Closure::Compiler.new(compilation_level: 'ADVANCED_OPTIMIZATIONS')
 
   # Enable cache buster
   activate :asset_hash
