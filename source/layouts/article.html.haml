@@ -1,4 +1,4 @@
-- wrap_layout :layout do
+= wrap_layout :layout do
   - unless current_article.nil?
     .post
       .data
@@ -9,3 +9,5 @@
       .content
         %h1= current_article.title
         = yield
+        = disqus
+        = disqus_count

@@ -21,7 +21,6 @@ $column-width   : 4em
 $gutter-width   : 1em
 $grid-padding   : $gutter-width
 $break: 12
-$mobile-layout  : $total-columns 30em
 
 *
   box-sizing: border-box
@@ -53,9 +52,9 @@ body
     +background(linear-gradient(top, #f9f9f9, #fff))
     +box-shadow(inset 0 0 0.4em rgba(0,0,0,0.1))
     .column
-      +span-columns(4, 12)
+      +span(4 of 12)
       &:last-of-type
-        +span-columns(4 omega, 12)
+        +span(last 4 of 12)
     h2, a, p
       color: $text-color-lighter
       text-decoration: none
@@ -66,7 +65,7 @@ body
       padding: 0
 
 section.container
-  +container($total-columns, $break)
+  +container(60em)
   padding: 1em
 
 h1
@@ -94,10 +93,7 @@ a
 .post
   .data
     color: $text-color-lighter
-    padding: 4em 0
-    +span-columns(3, 12)
-  .intro, .content
-    +span-columns(9 omega, 12)
+    padding: 1em 0
 
 .post_list
   .post
@@ -116,14 +112,18 @@ a
       +transition(0.5s)
     &:hover h2 a, h2 a:hover
       color: $color-highlight
+    .data
+      padding: 4em 0
+      +span(3 of 12)
+    .intro, .content
+      +span(last 9 of 12)
 
 pre
   padding: 1em
-  +box-shadow(inset 0.1em 0.1em 0 rgba(0,0,0,0.2))
-  +border-radius(0.5em)
-  border: 1px solid #eee
+  +border-radius(0.25em)
+  border: 1px solid #f3f3f3
 
-+at-breakpoint($mobile-layout)
++susy-breakpoint(30em 60em, 12)
   .post_list
     .tags_list
       float: right
@@ -140,8 +140,11 @@ pre
     .tags_list
       float: right
     .data, .intro, .content
-      +reset-columns
+      +full
       padding: 0
   body > footer
     .column, .column:last-of-type
-      +reset-columns
+      +full
+
+#disqus_thread
+  margin-top: 5em

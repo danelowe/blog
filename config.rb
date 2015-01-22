@@ -75,6 +75,11 @@ page "/feed.xml", layout: false
 # Reload the browser automatically whenever files change
 activate :livereload
 
+activate :disqus do |d|
+  # Disqus shotname, without '.disqus.com' on the end (default = nil)
+  d.shortname = 'danelowe'
+end
+
 # Methods defined in the helpers block are available in templates
 # helpers do
 #   def some_helper
