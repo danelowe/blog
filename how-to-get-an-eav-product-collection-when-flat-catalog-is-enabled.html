@@ -13,8 +13,8 @@
 <link href='favicon.ico' rel='icon' type='image/ico'>
 <title>How to get an EAV product collection when Flat Catalog is Enabled</title>
 <link rel="alternate" type="application/atom+xml" title="Atom Feed" href="/feed.xml" />
-<link href="/stylesheets/all-f8fbed39.css" media="screen" rel="stylesheet" type="text/css" />
-<script src="/javascripts/all-623e08ea.js" type="text/javascript"></script>
+<link href="/stylesheets/all-5c3f3084.css" rel="stylesheet" type="text/css" />
+<script src="/javascripts/all-b51db3d4.js" type="text/javascript"></script>
 </head>
 <body class='how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled'>
 <script>
@@ -52,7 +52,7 @@
 
 <p>Create a Resource Model that overloads Mage_Catalog_Model_Resource_Product_Collection</p>
 
-<pre class="highlight php"><span class="cp">&lt;?php</span>
+<pre class="highlight php"><code><span class="cp">&lt;?php</span>
 <span class="sd">/**
 * Override core Product Collection Model to allow programmatically disabling flat catalog.
 */</span>
@@ -75,10 +75,11 @@
         <span class="k">return</span> <span class="nv">$this</span><span class="p">;</span>
     <span class="p">}</span>
 <span class="p">}</span>
-</pre>
+</code></pre>
+
 <p>And of course define the overload in your extension's config.xml</p>
 
-<pre class="highlight xml"><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<pre class="highlight xml"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
 <span class="nt">&lt;config&gt;</span>
     <span class="nt">&lt;modules&gt;</span>
         <span class="nt">&lt;Avid_TTCatalog&gt;</span>
@@ -95,13 +96,42 @@
         <span class="nt">&lt;/models&gt;</span>
     <span class="nt">&lt;/global&gt;</span>
 <span class="nt">&lt;/config&gt;</span>
-</pre>
+</code></pre>
+
 <p>Then, you can disable flat catalog on any product collection immediately after instantiating it, e.g.</p>
 
-<pre class="highlight php"><span class="cp">&lt;?php</span>
+<pre class="highlight php"><code><span class="cp">&lt;?php</span>
 <span class="nv">$collection</span> <span class="o">=</span> <span class="nx">Mage</span><span class="o">::</span><span class="na">getModel</span><span class="p">(</span><span class="s1">'catalog/product'</span><span class="p">)</span><span class="o">-&gt;</span><span class="na">getCollection</span><span class="p">()</span>
     <span class="o">-&gt;</span><span class="na">setDisableFlat</span><span class="p">(</span><span class="kc">true</span><span class="p">);</span>
-</pre>
+</code></pre>
+
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+//<![CDATA[
+                  var disqus_shortname = 'danelowe';
+          
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+//]]>
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+<script type="text/javascript">
+//<![CDATA[
+    var disqus_shortname = 'danelowe';
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+//]]>
+</script>
+
 </div>
 </div>
 </section>
@@ -110,13 +140,14 @@
 <div class='column'>
 <h2>Recent Articles</h2>
 <ol>
+<li><a href="/bulk-updating-eav-attributes-in-magento.html">Bulk updating EAV attributes in Magento</a></li>
 <li><a href="/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html">How to get an EAV product collection when Flat Catalog is Enabled</a></li>
 </ol>
 </div>
 <div class='column'>
 <h2>Tags</h2>
 <ol>
-<li><a href="/tags/magento.html">Magento (1)</a></li>
+<li><a href="/tags/magento.html">Magento (2)</a></li>
 </ol>
 </div>
 <div class='column'>
@@ -129,4 +160,3 @@
 </section>
 </footer>
 </body>
-

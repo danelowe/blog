@@ -5,16 +5,577 @@
   <id>http://blog.url.com/</id>
   <link href="http://blog.url.com/"/>
   <link href="http://blog.url.com/feed.xml" rel="self"/>
-  <updated>2013-04-19T20:14:00Z</updated>
+  <updated>2015-01-22T11:52:00+00:00</updated>
   <author>
     <name>Blog Author</name>
   </author>
   <entry>
+    <title>Bulk updating EAV attributes in Magento</title>
+    <link rel="alternate" href="http://blog.url.com/bulk-updating-eav-attributes-in-magento.html"/>
+    <id>http://blog.url.com/bulk-updating-eav-attributes-in-magento.html</id>
+    <published>2015-01-22T11:52:00+00:00</published>
+    <updated>2015-01-22T14:38:09+00:00</updated>
+    <author>
+      <name>Article Author</name>
+    </author>
+    <content type="html">&lt;h2 id="dont-fear-the-eav"&gt;Don't fear the EAV&lt;/h2&gt;
+&lt;p&gt;EAV in Magento is a pain. It's slow and difficult to manage. But it's not going away.&lt;/p&gt;
+
+&lt;p&gt;Sometimes (well, all of the time) I wish there was a PostgreSQL adapter for Magento and it did away with EAV for one of
+the many features (HSTORE, JSON field queries) Postgres has that makes EAV in Magento's case unecessary. I think that is
+a project for another day.&lt;/p&gt;
+
+&lt;p&gt;Right now. There are many situations where data just needs to be stored in an EAV attribute.
+Sorting, for example, is designed in such a way that you really need an attribute to sort by.
+This is especially the case if you use the Bubble_ElasticSearch extension, or perhaps other engines.
+If you try to add a sort option that isn't an attribute, you are in for a world of hurt and a lot of nasty hacks.
+Sometimes you really just need to quickly update some EAV attributes for a bunch of products at once.&lt;/p&gt;
+
+&lt;p&gt;So, in this post, we will be working towards creating an indexing process that grabs some data from a query and
+efficiently updates that data as EAV values against each product.
+The attribute we will be updating is called sale_count, and represents the number of times the product has been sold,
+taking into account the state of the orders.&lt;/p&gt;
+
+&lt;h2 id="create-the-eav-attribute"&gt;Create the EAV attribute.&lt;/h2&gt;
+&lt;p&gt;Here is some example content for a migration script to create the attribute.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="c1"&gt;//install-0.1.0.php
+&lt;/span&gt;&lt;span class="nv"&gt;$installer&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="cm"&gt;/* @var $installer Mage_Core_Model_Resource_Setup */&lt;/span&gt;
+&lt;span class="nv"&gt;$installer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;startSetup&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+&lt;span class="nv"&gt;$attr&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="s1"&gt;'type'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="s1"&gt;'int'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'backend'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="s1"&gt;''&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'frontend'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="s1"&gt;''&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'label'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="s1"&gt;'Sale Count'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'input'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="s1"&gt;'text'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'global'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nx"&gt;Mage_Catalog_Model_Resource_Eav_Attribute&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;SCOPE_STORE&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'is_visible'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'is_configurable'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'used_in_product_listing'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'required'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s1"&gt;'default'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="nv"&gt;$installer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;addAttribute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog_product'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s1"&gt;'sale_count'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nv"&gt;$attr&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="nv"&gt;$installer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;updateAttribute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog_product'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'sale_count'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'used_in_product_listing'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="nv"&gt;$installer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;updateAttribute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog_product'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'sale_count'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'is_visible'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="nv"&gt;$installer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;updateAttribute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog_product'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'sale_count'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'used_for_sort_by'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="nv"&gt;$installer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;endSetup&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id="updating-eav-data-in-bulk"&gt;Updating EAV data in bulk.&lt;/h2&gt;
+
+&lt;p&gt;As far as I know, Magento has no built in method to bulk update EAV attributes for many products with different values.
+I would be extremely happy if someone could prove me wrong.&lt;/p&gt;
+
+&lt;p&gt;For now, we can use a method similar to this one on a resource model.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="sd"&gt;/**
+ * Update EAV table with data from an array
+ *
+ * @param array $data 
+ *   a 3d array with entity_id and value as keys for each row, e.g. array(array('entity_id' =&amp;gt; 1, 'value' =&amp;gt; 'test'))
+ * @return $this
+ */&lt;/span&gt;
+&lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_updateEavTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="k"&gt;empty&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$attributeModel&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getModel&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'eav/entity_attribute'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;loadByCode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog_product'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'sale_count'&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="nv"&gt;$attributeData&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="s1"&gt;'entity_type_id'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nv"&gt;$attributeModel&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getEntityTypeId&lt;/span&gt;&lt;span class="p"&gt;(),&lt;/span&gt;
+            &lt;span class="s1"&gt;'attribute_id'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nv"&gt;$attributeModel&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getAttributeId&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+        &lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="nv"&gt;$tableData&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;foreach&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="nv"&gt;$_row&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$tableData&lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;  &lt;span class="nb"&gt;array_merge&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$_row&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$attributeData&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="nv"&gt;$adapter&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_getWriteAdapter&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="nv"&gt;$tableName&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$attributeModel&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getBackendTable&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="nv"&gt;$adapter&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;insertOnDuplicate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$tableName&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$tableData&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'value'&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;What this does is simply get the attribute model, find out what the entity_type_id and attribute_id should be,
+then update the backend table for that attribute. &lt;/p&gt;
+
+&lt;p&gt;Note the use of insertOnDuplicate(). This will do an upsert, which in MySQL is will be an 
+INSERT … ON DUPLICATE KEY UPDATE. The array('value') parameter in this method call means that the query is constructed in such a
+way that if a duplicate key is encountered (the product already has a value for this attribute) during the insert, 
+that column in row will simply be updated. The resulting SQL will be similar to:&lt;/p&gt;
+
+&lt;pre class="highlight sql"&gt;&lt;code&gt;&lt;span class="k"&gt;INSERT&lt;/span&gt; &lt;span class="k"&gt;INTO&lt;/span&gt; &lt;span class="nv"&gt;`catalog_product_entity_int`&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;`store_id`&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nv"&gt;`entity_id`&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nv"&gt;`value`&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nv"&gt;`entity_type_id`&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nv"&gt;`attribute_id`&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; 
+&lt;span class="k"&gt;VALUES&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="o"&gt;?&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="k"&gt;ON&lt;/span&gt; &lt;span class="n"&gt;DUPLICATE&lt;/span&gt; &lt;span class="k"&gt;KEY&lt;/span&gt; &lt;span class="k"&gt;UPDATE&lt;/span&gt; &lt;span class="nv"&gt;`value`&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;VALUES&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;`value`&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; 
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Nice and simple, huh. Knowing how Magento EAV attributes work, and being armed with simple snippets like this can open
+up a lot of doors when managing data in Magento. &lt;/p&gt;
+
+&lt;p&gt;Notice how the $data parameter asks for a slightly more complex array than it needs to. 
+ Why doesn't it just ask for a 2D array with the product ID as key, and the value as, well, the value of the
+ array element? 
+ You could adjust the method a bit to do that, but in this case I want to update the EAV attribute values directly
+ from an SQL query, which is what the next method is all about.&lt;/p&gt;
+
+&lt;h2 id="updating-the-data-from-an-sql-method"&gt;Updating the data from an SQL method.&lt;/h2&gt;
+
+&lt;p&gt;Assume we have an SQL query that returns rows of data with two columns:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;entity_id - The product ID&lt;/li&gt;
+  &lt;li&gt;value - The value of the EAV attribute as we want to store it in the database&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Well, now it is simple to update the EAV data from that query. 
+All we have to do is pass the data returned from that query to the method we created above.
+But first we want to put a guard in there to prevent updating too many rows at once.
+The algorithm for this particular guard was lifted from Magento core. &lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="sd"&gt;/**
+ * Update EAV Table with data from select;
+ *
+ * @param Zend_Db_Select $select that returns rows with one column named 'entity_id', and the other named 'value'
+ * @return $this
+ */&lt;/span&gt;
+&lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_updateFromSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Zend_Db_Select&lt;/span&gt; &lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="nv"&gt;$query&lt;/span&gt;   &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_getReadAdapter&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;query&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="nv"&gt;$i&lt;/span&gt;      &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="nv"&gt;$data&lt;/span&gt;   &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+    &lt;span class="k"&gt;while&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$_row&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$query&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;fetch&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;PDO&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;FETCH_ASSOC&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$i&lt;/span&gt; &lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$_row&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;((&lt;/span&gt;&lt;span class="nv"&gt;$i&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="mi"&gt;1000&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_updateEavTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+            &lt;span class="nv"&gt;$data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_updateEavTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Have a look at the below method for an example of such a select object.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="sd"&gt;/**
+ * Get a Select object to update the data from
+ *
+ * @param array $productIds
+ * @return Varien_Db_Select|Zend_Db_Select
+ */&lt;/span&gt;
+&lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_getSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="nv"&gt;$select&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getModel&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'sales/order'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getCollection&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getSelect&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+        &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;reset&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Zend_Db_Select&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;COLUMNS&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;columns&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'store_id'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;joinLeft&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'items'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'sales/order_item'&lt;/span&gt;&lt;span class="p"&gt;)),&lt;/span&gt;
+            &lt;span class="s1"&gt;'main_table.entity_id = items.order_id'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="nx"&gt;Zend_Db_Expr&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'product_id as entity_id'&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt; &lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="nx"&gt;Zend_Db_Expr&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'sum(qty_ordered) as value'&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;where&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;"main_table.created_at &amp;gt; DATE_FORMAT(NOW() - INTERVAL 3 MONTH, '%Y-%m-01')"&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;where&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;"main_table.status IN ('complete', 'processing', 'closed')"&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;group&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'items.product_id'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'main_table.store_id'&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;where&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'items.product_id IN (?)'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id="making-it-legit"&gt;Making it legit&lt;/h2&gt;
+
+&lt;p&gt;OK, so now we have an SQL query to get the data we want from the database, 
+and the means to insert that data as EAV attributes for each product. 
+All that is left is turning this code into a legitimate Magento indexer.&lt;/p&gt;
+
+&lt;p&gt;In true Magento style, the boilerplate code here can seem a little unwieldy, but makes sense once you study it.&lt;/p&gt;
+
+&lt;h3 id="the-resource-model"&gt;The Resource Model&lt;/h3&gt;
+
+&lt;p&gt;All of the code we have looked at so far operates on the database, so it belongs in a resource model.&lt;/p&gt;
+
+&lt;p&gt;In this case, the ability to update an EAV attribute in bulk is so useful in the indexing processes I am creating
+that I want to make it re-usable. The obvious first step here is to create an abstract class with the re-usable code.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="k"&gt;abstract&lt;/span&gt; &lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;MyNamespace_MyModule_Model_Resource_Indexer_Eav_Abstract&lt;/span&gt;
+    &lt;span class="k"&gt;extends&lt;/span&gt; &lt;span class="nx"&gt;Mage_Catalog_Model_Resource_Product_Indexer_Abstract&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="nv"&gt;$_attributeCode&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="nv"&gt;$_entityTypeCode&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s1"&gt;'catalog_product'&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Reindex All
+     *
+     * @return $this
+     * @throws Exception
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;reindexAll&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;reindexProductIds&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Reindex data for a set of product IDs
+     *
+     * @param null|array $productIds
+     * @return $this
+     * @throws Exception
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;reindexProductIds&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kc"&gt;null&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;useIdxTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;beginTransaction&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;try&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_updateFromSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_getSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+            &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;commit&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="k"&gt;catch&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Exception&lt;/span&gt; &lt;span class="nv"&gt;$e&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;rollBack&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+            &lt;span class="k"&gt;throw&lt;/span&gt; &lt;span class="nv"&gt;$e&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Get The Select that has data for the product IDs
+     * Should have entity_id as one column, and value as the next
+     *
+     * @param array $productIds
+     * @return Zend_Db_Select
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;abstract&lt;/span&gt; &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_getSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Update EAV Table with data from select;
+     *
+     * @param Zend_Db_Select $select that returns rows with one column named 'entity_id', and the other named 'value'
+     * @return $this
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_updateFromSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Zend_Db_Select&lt;/span&gt; &lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$query&lt;/span&gt;   &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_getReadAdapter&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;query&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="nv"&gt;$i&lt;/span&gt;      &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="nv"&gt;$data&lt;/span&gt;   &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;while&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$_row&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$query&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;fetch&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;PDO&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;FETCH_ASSOC&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$i&lt;/span&gt; &lt;span class="o"&gt;++&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+            &lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$_row&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+            &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;((&lt;/span&gt;&lt;span class="nv"&gt;$i&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="mi"&gt;1000&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+                &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_updateEavTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+                &lt;span class="nv"&gt;$data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+            &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_updateEavTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Update EAV table with data from an array
+     *
+     * @param $data
+     * @return $this
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_updateEavTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="k"&gt;empty&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$attributeModel&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_getAttributeModel&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+            &lt;span class="nv"&gt;$attributeData&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+                &lt;span class="s1"&gt;'entity_type_id'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nv"&gt;$attributeModel&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getEntityTypeId&lt;/span&gt;&lt;span class="p"&gt;(),&lt;/span&gt;
+                &lt;span class="s1"&gt;'attribute_id'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nv"&gt;$attributeModel&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getAttributeId&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+            &lt;span class="p"&gt;);&lt;/span&gt;
+            &lt;span class="nv"&gt;$tableData&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+            &lt;span class="k"&gt;foreach&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="nv"&gt;$_row&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+                &lt;span class="nv"&gt;$tableData&lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;  &lt;span class="nb"&gt;array_merge&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$_row&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$attributeData&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+            &lt;span class="p"&gt;}&lt;/span&gt;
+            &lt;span class="nv"&gt;$adapter&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_getWriteAdapter&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+            &lt;span class="nv"&gt;$tableName&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$attributeModel&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getBackendTable&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+            &lt;span class="nv"&gt;$adapter&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;insertOnDuplicate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$tableName&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$tableData&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'value'&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Get Attribute Model
+     *
+     * @return Mage_Eav_Model_Entity_Attribute_Abstract
+     * @throws Mage_Core_Exception
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_getAttributeModel&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getModel&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'eav/entity_attribute'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;loadByCode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_entityTypeCode&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_attributeCode&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;So to create the Resource model for the particular indexer, we can just define the SQL query and a few variables.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;MyNamespace_MyModule_Model_Resource_Indexer_SaleCount&lt;/span&gt;
+    &lt;span class="k"&gt;extends&lt;/span&gt; &lt;span class="nx"&gt;MyNamespace_MyModule_Model_Resource_Indexer_Eav_Abstract&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="nv"&gt;$_attributeCode&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s1"&gt;'sale_count'&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Initialize connection and define main table
+     *
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_construct&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_init&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule/index_product_data'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'product_id'&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;incrementProductSaleCount&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$storeId&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="c1"&gt;// Run an SQL query to update the attribute on the products whenever an order is placed
+&lt;/span&gt;    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Get a Select object to update the data from
+     *
+     * @param array $productIds
+     * @return Varien_Db_Select|Zend_Db_Select
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_getSelect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$select&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getModel&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'sales/order'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getCollection&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getSelect&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+            &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;reset&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Zend_Db_Select&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;COLUMNS&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;columns&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'store_id'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;joinLeft&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+                &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'items'&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getTable&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'sales/order_item'&lt;/span&gt;&lt;span class="p"&gt;)),&lt;/span&gt; 
+                &lt;span class="s1"&gt;'main_table.entity_id = items.order_id'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; 
+                &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="nx"&gt;Zend_Db_Expr&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'product_id as entity_id'&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt; &lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="nx"&gt;Zend_Db_Expr&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'sum(qty_ordered) as value'&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+            &lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;where&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;"main_table.created_at &amp;gt; DATE_FORMAT(NOW() - INTERVAL 3 MONTH, '%Y-%m-01')"&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;where&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;"main_table.status IN ('complete', 'processing', 'closed')"&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;group&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'items.product_id'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'main_table.store_id'&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+        &lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;where&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'items.product_id IN (?)'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$productIds&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$select&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt; 
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id="the-indexer-model"&gt;The Indexer Model&lt;/h2&gt;
+&lt;p&gt;The gist of indexer models is that a Mage_Index_Model_Event is matched, 
+giving the indexer model a chance to decide if it wants to do something with the event or not.
+If the indexer matches the event, it would usually  the register itself, storing some data about the event.
+Then in due course the indexer processes the event, 
+loading the stored data and running an index process using that data.
+Because the process of indexing is essentially moving data around, it is often done in the database and hence passed
+off to a resource model behind the indexer model.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;MyNamespace_MyModule_Model_Indexer_SaleCount&lt;/span&gt; &lt;span class="k"&gt;extends&lt;/span&gt; &lt;span class="nx"&gt;Mage_Index_Model_Indexer_Abstract&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="sd"&gt;/**
+     * Data key for matching result to be saved in
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;const&lt;/span&gt; &lt;span class="no"&gt;EVENT_MATCH_RESULT_KEY&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s1"&gt;'mynamespace_mymodule_index_sale_count_match_result'&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+
+    &lt;span class="sd"&gt;/**
+     * @var array
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="nv"&gt;$_matchedEntities&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="nx"&gt;Mage_Sales_Model_Order&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;ENTITY&lt;/span&gt; &lt;span class="o"&gt;=&amp;gt;&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="s1"&gt;'create'&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;);&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Initialize resource model
+     *
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_construct&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_init&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule/indexer_saleCount'&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Retrieve Indexer name
+     *
+     * @return string
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;getName&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;helper&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;__&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'Product Sale Count (EAV)'&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Retrieve Indexer description
+     *
+     * @return string
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;getDescription&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;helper&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;__&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'Set the number of sales for each product in an EAV attribute'&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Register data required by process in event object
+     *
+     * @param Mage_Index_Model_Event $event
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_registerEvent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Mage_Index_Model_Event&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="sd"&gt;/** @var Mage_Sales_Model_Order $order */&lt;/span&gt;
+        &lt;span class="nv"&gt;$order&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getDataObject&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="nv"&gt;$ids&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;array&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;foreach&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$order&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getAllItems&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="nv"&gt;$_item&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="nv"&gt;$ids&lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$_item&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getProductId&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;addNewData&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule_index_sale_count_product_ids'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$ids&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;addNewData&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule_index_sale_count_store_id'&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$order&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getStoreId&lt;/span&gt;&lt;span class="p"&gt;());&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;matchEvent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Mage_Index_Model_Event&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getNewData&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;isset&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;self&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;EVENT_MATCH_RESULT_KEY&lt;/span&gt;&lt;span class="p"&gt;]))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;self&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;EVENT_MATCH_RESULT_KEY&lt;/span&gt;&lt;span class="p"&gt;];&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="nv"&gt;$entity&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getEntity&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="nv"&gt;$result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$entity&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="nx"&gt;Mage_Sales_Model_Order&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;ENTITY&lt;/span&gt;&lt;span class="p"&gt;){&lt;/span&gt;
+            &lt;span class="k"&gt;return&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;addNewData&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;self&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;EVENT_MATCH_RESULT_KEY&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$result&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$result&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="sd"&gt;/**
+     * Process event
+     *
+     * @param Mage_Index_Model_Event $event
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_processEvent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Mage_Index_Model_Event&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$event&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getNewData&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="k"&gt;empty&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule_index_sale_count_product_ids'&lt;/span&gt;&lt;span class="p"&gt;])){&lt;/span&gt;
+            &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getResource&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;incrementProductSaleCount&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+                &lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule_index_sale_count_product_ids'&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+                &lt;span class="nv"&gt;$data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;'mynamespace_mymodule_index_sale_count_store_id'&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+            &lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id="but-magento-doesnt-have-an-index-event-for-order-place"&gt;But Magento doesn't have an index event for Order Place!&lt;/h2&gt;
+
+&lt;p&gt;Well, now it does…&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;MyNamespace_MyModule_Model_Observer&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="sd"&gt;/**
+     * Reindex on Order Place
+     *
+     * Hook on order place to allow reindexing of top-sellers and product_revenue
+     * @param $observer
+     */&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;reindexOrderPlace&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$observer&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$order&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$observer&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getEvent&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getOrder&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+        &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getSingleton&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'index/indexer'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;processEntityAction&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="nv"&gt;$order&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nx"&gt;Mage_Sales_Model_Order&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;ENTITY&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;'create'&lt;/span&gt;
+        &lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id="the-config"&gt;The Config&lt;/h2&gt;
+
+&lt;p&gt;How does Magento know to send the Index events to the indexer model? 
+The model is registered as an indexer in your module config. Yay, more config to learn!&lt;/p&gt;
+
+&lt;pre class="highlight xml"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?xml version="1.0" encoding="UTF-8"?&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;config&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;modules&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;MyNamespace_MyModule&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;version&amp;gt;&lt;/span&gt;0.1.0&lt;span class="nt"&gt;&amp;lt;/version&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/MyNamespace_MyModule&amp;gt;&lt;/span&gt;
+    &lt;span class="nt"&gt;&amp;lt;/modules&amp;gt;&lt;/span&gt;
+
+    &lt;span class="nt"&gt;&amp;lt;global&amp;gt;&lt;/span&gt;
+    
+        &lt;span class="nt"&gt;&amp;lt;models&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;mynamespace_mymodule&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;class&amp;gt;&lt;/span&gt;MyNamespace_MyModule_Model&lt;span class="nt"&gt;&amp;lt;/class&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;resourceModel&amp;gt;&lt;/span&gt;mynamespace_mymodule_resource&lt;span class="nt"&gt;&amp;lt;/resourceModel&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;/mynamespace_mymodule&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;mynamespace_mymodule_resource&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;class&amp;gt;&lt;/span&gt;MyNamespace_MyModule_Model_Resource&lt;span class="nt"&gt;&amp;lt;/class&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;/mynamespace_mymodule_resource&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/models&amp;gt;&lt;/span&gt;
+
+        &lt;span class="nt"&gt;&amp;lt;resources&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;mynamespace_mymodule_setup&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;setup&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;module&amp;gt;&lt;/span&gt;MyNamespace_MyModule&lt;span class="nt"&gt;&amp;lt;/module&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;class&amp;gt;&lt;/span&gt;Mage_Eav_Model_Entity_Setup&lt;span class="nt"&gt;&amp;lt;/class&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;/setup&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;connection&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;use&amp;gt;&lt;/span&gt;core_setup&lt;span class="nt"&gt;&amp;lt;/use&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;/connection&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;/mynamespace_mymodule_setup&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/resources&amp;gt;&lt;/span&gt;
+
+        &lt;span class="nt"&gt;&amp;lt;events&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;sales_order_place_after&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;observers&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;avid_mynamespace_mymodule_reindex_order_place&amp;gt;&lt;/span&gt;
+                        &lt;span class="nt"&gt;&amp;lt;class&amp;gt;&lt;/span&gt;mynamespace_mymodule/observer&lt;span class="nt"&gt;&amp;lt;/class&amp;gt;&lt;/span&gt;
+                        &lt;span class="nt"&gt;&amp;lt;method&amp;gt;&lt;/span&gt;reindexOrderPlace&lt;span class="nt"&gt;&amp;lt;/method&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;/avid_mynamespace_mymodule_reindex_order_place&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;/observers&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;/sales_order_place_after&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/events&amp;gt;&lt;/span&gt;
+
+        &lt;span class="nt"&gt;&amp;lt;index&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;indexer&amp;gt;&lt;/span&gt;
+                &lt;span class="c"&gt;&amp;lt;!-- Indexer name is stored in database, with limited characters --&amp;gt;&lt;/span&gt;
+                &lt;span class="c"&gt;&amp;lt;!-- Don't make the name too long or you might get strange errors --&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;tt_catalog_saleCount&amp;gt;&lt;/span&gt;
+                    &lt;span class="nt"&gt;&amp;lt;model&amp;gt;&lt;/span&gt;mynamespace_mymodule/indexer_saleCount&lt;span class="nt"&gt;&amp;lt;/model&amp;gt;&lt;/span&gt;
+                &lt;span class="nt"&gt;&amp;lt;/tt_catalog_saleCount&amp;gt;&lt;/span&gt;
+            &lt;span class="nt"&gt;&amp;lt;/indexer&amp;gt;&lt;/span&gt;
+        &lt;span class="nt"&gt;&amp;lt;/index&amp;gt;&lt;/span&gt;
+
+    &lt;span class="nt"&gt;&amp;lt;/global&amp;gt;&lt;/span&gt;
+&lt;span class="nt"&gt;&amp;lt;/config&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;P.S. Please leave empty lines between blocks of XML. Those using Vim or IdeaVim will understand all too well. &lt;/p&gt;
+
+&lt;h2 id="further-refactoring"&gt;Further refactoring.&lt;/h2&gt;
+&lt;p&gt;Composition over inheritance. Well, that's not so easy with PHP and Magento especially. 
+But, if the ability to update EAV attributes in bulk is so cool that we want to reuse it in places other than Indexers
+we don't want the logic sitting in the Resource Model for an indexer do we?
+The logic needs to be in one place that is accessible everywhere. In Magento, that could mean:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;A Helper&lt;/li&gt;
+  &lt;li&gt;A Service Object&lt;/li&gt;
+  &lt;li&gt;Somewhere else&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Which would you choose, and why?&lt;/p&gt;
+</content>
+  </entry>
+  <entry>
     <title>How to get an EAV product collection when Flat Catalog is Enabled</title>
     <link rel="alternate" href="http://blog.url.com/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html"/>
     <id>http://blog.url.com/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html</id>
-    <published>2013-04-19T20:14:00Z</published>
-    <updated>2014-02-17T11:06:46+13:00</updated>
+    <published>2013-04-19T21:14:00+01:00</published>
+    <updated>2015-01-22T11:46:13+00:00</updated>
     <author>
       <name>Article Author</name>
     </author>
@@ -26,7 +587,7 @@
 
 &lt;p&gt;Create a Resource Model that overloads Mage_Catalog_Model_Resource_Product_Collection&lt;/p&gt;
 
-&lt;pre class="highlight php"&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
 &lt;span class="sd"&gt;/**
 * Override core Product Collection Model to allow programmatically disabling flat catalog.
 */&lt;/span&gt;
@@ -49,10 +610,11 @@
         &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
     &lt;span class="p"&gt;}&lt;/span&gt;
 &lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/pre&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
 &lt;p&gt;And of course define the overload in your extension's config.xml&lt;/p&gt;
 
-&lt;pre class="highlight xml"&gt;&lt;span class="cp"&gt;&amp;lt;?xml version="1.0" encoding="UTF-8"?&amp;gt;&lt;/span&gt;
+&lt;pre class="highlight xml"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?xml version="1.0" encoding="UTF-8"?&amp;gt;&lt;/span&gt;
 &lt;span class="nt"&gt;&amp;lt;config&amp;gt;&lt;/span&gt;
     &lt;span class="nt"&gt;&amp;lt;modules&amp;gt;&lt;/span&gt;
         &lt;span class="nt"&gt;&amp;lt;Avid_TTCatalog&amp;gt;&lt;/span&gt;
@@ -69,12 +631,14 @@
         &lt;span class="nt"&gt;&amp;lt;/models&amp;gt;&lt;/span&gt;
     &lt;span class="nt"&gt;&amp;lt;/global&amp;gt;&lt;/span&gt;
 &lt;span class="nt"&gt;&amp;lt;/config&amp;gt;&lt;/span&gt;
-&lt;/pre&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
 &lt;p&gt;Then, you can disable flat catalog on any product collection immediately after instantiating it, e.g.&lt;/p&gt;
 
-&lt;pre class="highlight php"&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
 &lt;span class="nv"&gt;$collection&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nx"&gt;Mage&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;getModel&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'catalog/product'&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getCollection&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
     &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;setDisableFlat&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
-&lt;/pre&gt;</content>
+&lt;/code&gt;&lt;/pre&gt;
+</content>
   </entry>
 </feed>
