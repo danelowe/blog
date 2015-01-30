@@ -5,10 +5,154 @@
   <id>http://blog.url.com/</id>
   <link href="http://blog.url.com/"/>
   <link href="http://blog.url.com/feed.xml" rel="self"/>
-  <updated>2015-01-22T11:52:00+00:00</updated>
+  <updated>2015-01-30T13:55:00+00:00</updated>
   <author>
     <name>Blog Author</name>
   </author>
+  <entry>
+    <title>If Business Logic worked like a business</title>
+    <link rel="alternate" href="http://blog.url.com/if-business-logic-worked-like-a-business.html"/>
+    <id>http://blog.url.com/if-business-logic-worked-like-a-business.html</id>
+    <published>2015-01-30T13:55:00+00:00</published>
+    <updated>2015-01-30T15:42:51+00:00</updated>
+    <author>
+      <name>Article Author</name>
+    </author>
+    <content type="html">&lt;p&gt;It often seems as if half the battle with building and maintaining large web applications 
+is determining where the logic should go. &lt;/p&gt;
+
+&lt;p&gt;We start off by making our controllers 'skinny'. 
+This is almost a given, and makes sense when you consider them as simple 'adapters' in a 
+&lt;a href="http://victorsavkin.com/post/42542190528/hexagonal-architecture-for-rails-developers"&gt;hexagonal architecture&lt;/a&gt;.
+All the controller needs to do is make sure it can serve the request, 
+and act as a mediator between the application and the user.&lt;/p&gt;
+
+&lt;p&gt;P.S. If you really want to see what hell fat controllers can cause, try doing some heavy customisation on Magento. 
+You'll soon develop a really good feel for why they shouldn't be telling the others how to do their job.&lt;/p&gt;
+
+&lt;p&gt;So now we come across issues where our models are taking on a bit too much, 
+and aren't quite as agile as they used to be.
+There is endless debate about how to deal with fat models, &lt;strong&gt;and for good reason&lt;/strong&gt;. 
+It is not something that can be dealt with by one single 'rule' or 'strategy' acting as a panacea.&lt;/p&gt;
+
+&lt;p&gt;To understand the complexity, perhaps we draw a metaphor as the application as a business,
+and look at how business logic is applied. 
+When you consider the metaphor, there are a staggering number of similarities in how business logic affects 
+complexity and agility.&lt;/p&gt;
+
+&lt;h2 id="it-all-about-separation-of-concerns"&gt;It all about Separation of Concerns&lt;/h2&gt;
+
+&lt;p&gt;For a business to work well, we can't have silos, 
+but each person in the business needs to know what their role is, and do that role well. 
+Consider that you shouldn't have to tell your co-worker how to do their job, 
+but you definitely need to know what she is doing if it affects your work. &lt;/p&gt;
+
+&lt;p&gt;There's always a balance needed, and it is very rarely met just right in practice.
+There is not a single organisational structure that suits all businesses.
+In fact, for most large businesses, I would not expect a single arrangement to suit every working group within it. &lt;/p&gt;
+
+&lt;p&gt;So we need a pick and mix of strategies, each with their own characteristics. &lt;/p&gt;
+
+&lt;h2 id="the-callback"&gt;The callback&lt;/h2&gt;
+
+&lt;p&gt;This could be considered quite an informal arrangement that gets things done without much red tape. 
+Bob has a note on his desk saying "Before you file the quote, make sure you get Sally to add the taxes". &lt;/p&gt;
+
+&lt;p&gt;This is nice and simple, but fill Bob's desk with twenty more notes and he might start complaining that he has his 
+fingers in too many pies, and would rather concentrate on his own work. 
+What happens when management forgets to tell Bob that Sally no longer works there, or that she's struggling with
+her workload so there is a receptionist to deal with her jobs. Bob will keep doing the wrong thing. &lt;/p&gt;
+
+&lt;p&gt;Sure, tell Bob if you remember, &lt;/p&gt;
+
+&lt;p&gt;As the business grows, the callback becomes a bit of a liability.&lt;/p&gt;
+
+&lt;p&gt;Bob find's a P.S. at the bottom of the note. 
+"It's probably best you give Sally the quote, and politely request that she write the full details down on it, 
+we don't want a repeat of last time you just asked her for the figures and accidentally mixed up VAT with GST"&lt;/p&gt;
+
+&lt;h2 id="the-listening-committee"&gt;The listening committee&lt;/h2&gt;
+
+&lt;p&gt;Bob got so frustrated, he asked for something to be done. 
+The director decided to set up a group of people who just 
+sit around all day waiting for people to tell them when they've reached a certain point in the tasks. 
+One or more of these people might be interested that Bob is about to finish a quote, 
+and organise for someone else do do something with it. &lt;/p&gt;
+
+&lt;p&gt;This came with a problem, and it wasn't that they were demanding too much money for doing nothing.
+Oh no, these workers are paid by the millisecond.&lt;/p&gt;
+
+&lt;p&gt;The problems were noticed by the director. 
+He had a call to say that a client never received a quote that was supposed to be emailed to them.&lt;/p&gt;
+
+&lt;p&gt;When the director approached Bob to find out what was going on, all he could say was 
+"Meh, I created the quote, didn't I"&lt;/p&gt;
+
+&lt;p&gt;The communications department reported that they never received a request to send a quote. &lt;/p&gt;
+
+&lt;p&gt;Something's just not right, and the director has no visibilty over it. 
+She naturally assumes the best solution to the problem is to make sure bob tells the communications department.&lt;/p&gt;
+
+&lt;p&gt;A week later, there are reports of people getting multiple quote emails. What the hell is going on? 
+She remembers that pesky listening committee! &lt;/p&gt;
+
+&lt;p&gt;She asks all of them whether they have anything to do with quotes and emails.
+One of them replies, "Oh yeah, I didn't think the communications department needed to worry about that quote."&lt;/p&gt;
+
+&lt;p&gt;So while the ever-opinionated Rails deprecated Observers in 4.0, 
+Magento has been using them extensively and to great effect to allow customisation.&lt;/p&gt;
+
+&lt;p&gt;What is the difference? Well probably close to 8 million lines of code, and the fact that Magento is a big corporation.
+Magento is also a complete platform rather than a framework.
+Magento can't really deal with having each department even know about the other
+if the director needs to swap out one of the departments.&lt;br /&gt;
+In fact, the Magento 'director' is so used to dealing with with the corporation as it is 
+that he considers the departments to be more like agencies that the company employs, and he is constantly consulting
+his listening committee as he knows they often have their hand in things 
+to make sure each agency's output is what they need.&lt;/p&gt;
+
+&lt;p&gt;The director take a while to reflect then tells the listening committee 
+"It's not your job to make business decisions!"&lt;/p&gt;
+
+&lt;h2 id="service-objects"&gt;Service objects&lt;/h2&gt;
+
+&lt;p&gt;Well then, whose job is it to make those decisions? There are just too many for one person to handle, 
+but the director needs to have visibility over the entire business if needed.&lt;/p&gt;
+
+&lt;p&gt;What we need is middle management!&lt;/p&gt;
+
+&lt;p&gt;Let's create a Manager whose job is to ensure customer's get their invoices. What a novel idea!&lt;/p&gt;
+
+&lt;p&gt;Steve is hired for the job, and we just need to make sure that Estelle knows to tell him whenever 
+a customer might need an invoice. 
+Steve isn't going anywhere in a hurry, and if he needs to change the process, he will handle it, end to end.&lt;/p&gt;
+
+&lt;p&gt;Bob just does what he's told, and doesn't care too much about what is outside his control. &lt;/p&gt;
+
+&lt;p&gt;The problem? Well it mostly works. We just need to hire smart Managers who know how and when to delegate.
+Not too much, not too little. 
+Oh, and sometimes the staff get a little bit confused when multiple people are telling them what to do. &lt;/p&gt;
+
+&lt;p&gt;Oh, and we don't want too many managers on a single level, they tend to confuse things and start conflicts.&lt;/p&gt;
+
+&lt;p&gt;Want managers who do their job well, and know their place? 
+&lt;a href="http://brewhouse.io/blog/2014/04/30/gourmet-service-objects.html"&gt;Try making their job descriptions as clear as possible.&lt;/a&gt;&lt;/p&gt;
+
+&lt;h2 id="get-me-the-business-consulting-group-on-the-line"&gt;Get me the business consulting group on the line!&lt;/h2&gt;
+
+&lt;p&gt;I wonder if the metaphor could be taken a lot further, or is already stretched too far, 
+or whether it is even a good way to look at an application.&lt;/p&gt;
+
+&lt;p&gt;We didn't even get into SOLID principles 
+and the details on how the staff need to communicate or what their job descriptions should be.&lt;/p&gt;
+
+&lt;p&gt;The point of the whole exercise is to illustrate a large application, like a business, is not at all simple.
+For each, there is no perfect recipe that always works (other than having all the experience in the world). &lt;/p&gt;
+
+&lt;p&gt;Simplicity is a good thing that we should always strive for, but realise that it is not going to come out of one thing.&lt;/p&gt;
+
+</content>
+  </entry>
   <entry>
     <title>Bulk updating EAV attributes in Magento</title>
     <link rel="alternate" href="http://blog.url.com/bulk-updating-eav-attributes-in-magento.html"/>
