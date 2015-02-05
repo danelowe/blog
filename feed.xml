@@ -14,7 +14,7 @@
     <link rel="alternate" href="http://blog.url.com/simple-and-robust-nginx-config-for-magento.html"/>
     <id>http://blog.url.com/simple-and-robust-nginx-config-for-magento.html</id>
     <published>2015-02-05T13:02:00+00:00</published>
-    <updated>2015-02-05T14:27:30+00:00</updated>
+    <updated>2015-02-05T14:40:06+00:00</updated>
     <author>
       <name>Article Author</name>
     </author>
@@ -166,7 +166,7 @@ Simply remove the location block to revoke access to that entry point. I love th
 I think it is important to point out that this is not particularly required 
 to prevent access to these files and directories. 
 Remember any location that is not explicitly defined will be served via PHP-FPM using index.php as the entry point, 
-and so will return a Magento 404 
+and so will return a Magento 404. 
 The point in these 404 locations is simply to increase performance in the case that any request is made 
 to these locations, by circumventing PHP.&lt;/p&gt;
 
@@ -247,6 +247,10 @@ A lot of attack vectors could be removed if one is refused by the web server. &l
 
 &lt;p&gt;Again it is immediately clear what we are doing.
 We are 'whitelisting' some directories to serve static assets from on assets.mydomain.com. &lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Note:&lt;/strong&gt; You'll want to make sure your assets are served via HTTPS as well. 
+This server is not set up for HTTPS, 
+but would do as a backend for a CDN like CloudFront that will have its own SSL certificate.&lt;/p&gt;
 
 &lt;h3 id="the-asset-boilerplate"&gt;The Asset Boilerplate&lt;/h3&gt;
 
