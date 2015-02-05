@@ -150,7 +150,7 @@ Note all the locations that return 404.
 I think it is important to point out that this is not particularly required 
 to prevent access to these files and directories. 
 Remember any location that is not explicitly defined will be served via PHP-FPM using index.php as the entry point, 
-and so will return a Magento 404 
+and so will return a Magento 404. 
 The point in these 404 locations is simply to increase performance in the case that any request is made 
 to these locations, by circumventing PHP.
 
@@ -231,6 +231,10 @@ server {
 
 Again it is immediately clear what we are doing.
 We are 'whitelisting' some directories to serve static assets from on assets.mydomain.com. 
+
+**Note:** You'll want to make sure your assets are served via HTTPS as well. 
+This server is not set up for HTTPS, 
+but would do as a backend for a CDN like CloudFront that will have its own SSL certificate.
 
 ### The Asset Boilerplate
 
