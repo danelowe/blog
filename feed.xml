@@ -5,10 +5,279 @@
   <id>http://blog.url.com/</id>
   <link href="http://blog.url.com/"/>
   <link href="http://blog.url.com/feed.xml" rel="self"/>
-  <updated>2015-01-30T13:55:00+00:00</updated>
+  <updated>2015-02-05T13:02:00+00:00</updated>
   <author>
     <name>Blog Author</name>
   </author>
+  <entry>
+    <title>Simple and Robust Nginx config for Magento</title>
+    <link rel="alternate" href="http://blog.url.com/simple-and-robust-nginx-config-for-magento.html"/>
+    <id>http://blog.url.com/simple-and-robust-nginx-config-for-magento.html</id>
+    <published>2015-02-05T13:02:00+00:00</published>
+    <updated>2015-02-05T14:27:30+00:00</updated>
+    <author>
+      <name>Article Author</name>
+    </author>
+    <content type="html">&lt;p&gt;I have a few requirements for my Magento Nginx configuration&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;I need to understand what it is doing, at first glance.&lt;/li&gt;
+  &lt;li&gt;I need to be able to create subdomains in a DRY fashion.&lt;/li&gt;
+  &lt;li&gt;It needs to be secure.&lt;/li&gt;
+  &lt;li&gt;It needs to work, and be performant.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;This is not using any load-balancer. It is a single server fronted by Nginx.&lt;/p&gt;
+
+&lt;p&gt;This isn't too much to ask, but the idiomatic Nginx config for Magento just wasn't cutting it for me. &lt;/p&gt;
+
+&lt;p&gt;I've always been bugged by the fact that Magento dumps application code, shell scripts and configuration files
+directly in the public directory.
+If one bit of config is missed, or a compromising file is added or renamed without updating the nginx config, 
+that becomes one opportunity for the wrong file to be accessed in the wrong way via the web server. &lt;/p&gt;
+
+&lt;p&gt;So, what can we do? We can revisit the way Magento is served:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;We define an 'App Server' that only serves the Magento App, and nothing else.&lt;/li&gt;
+  &lt;li&gt;We define one or more 'Asset Servers' that only serve static assets.&lt;/li&gt;
+  &lt;li&gt;On the App server, we route every single request through one of the few whitelisted entry points for Magento.&lt;/li&gt;
+  &lt;li&gt;On the Asset Servers, we only serve files from whitelisted directories. &lt;/li&gt;
+  &lt;li&gt;We optimise the configuration of each server separately. &lt;/li&gt;
+  &lt;li&gt;We make use of generic includes to make our intentions clearer, and make it easier to add new server configs.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Not only is this approach a little more secure, it makes things a lot easier to reason and maintain. 
+Have a look through the configuration below and see if you would agree. &lt;/p&gt;
+
+&lt;h2 id="the-app-server"&gt;The App Server&lt;/h2&gt;
+
+&lt;pre class="highlight nginx"&gt;&lt;code&gt;&lt;span class="c1"&gt;# sites-available/mydomain
+&lt;/span&gt;&lt;span class="k"&gt;server&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;listen&lt;/span&gt;         &lt;span class="mi"&gt;80&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;server_name&lt;/span&gt;    &lt;span class="s"&gt;mydomain.com&lt;/span&gt; &lt;span class="s"&gt;www.mydomain.com&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;rewrite&lt;/span&gt;        &lt;span class="s"&gt;^&lt;/span&gt; &lt;span class="s"&gt;https://www.mydomain.com&lt;/span&gt;&lt;span class="nv"&gt;$request_uri&lt;/span&gt;&lt;span class="s"&gt;?&lt;/span&gt; &lt;span class="s"&gt;permanent&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="k"&gt;server&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;listen&lt;/span&gt; &lt;span class="mi"&gt;443&lt;/span&gt; &lt;span class="s"&gt;default&lt;/span&gt; &lt;span class="s"&gt;ssl&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;server_name&lt;/span&gt; &lt;span class="s"&gt;mydomain.com&lt;/span&gt; &lt;span class="s"&gt;www.mydomain.com&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;root&lt;/span&gt; &lt;span class="n"&gt;/var/www/magento/current/public&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="kn"&gt;include&lt;/span&gt; &lt;span class="nc"&gt;includes/ssl&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;include&lt;/span&gt; &lt;span class="nc"&gt;includes/mage&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="kn"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;MAGE_RUN_CODE&lt;/span&gt; &lt;span class="s"&gt;default&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/admin&lt;/span&gt;               &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The first server block simply redirects any HTTP request to HTTPS.&lt;/p&gt;
+
+&lt;p&gt;I don't think there is any reason not to do this, and plenty of reasons to always do it. 
+The overheads are probably negligible when you've already got Magento as an overhead. 
+Any cookie that is sent over HTTP has the potential to be intercepted. 
+Remember, Magento uses a persistent session ID stored in a cookie.&lt;/p&gt;
+
+&lt;p&gt;Note the use of the includes. 
+This is simply including boilerplate config that will be shared among all of the 'app servers'.
+I will show you this boilerplate config in a tick. &lt;/p&gt;
+
+&lt;p&gt;In this case, each app server represents a new store view with a specified domain.
+For this reason, the MAGE_RUN_CODE is specified in this server block. 
+There probably is a way of conditionally defining the MAGE_RUN_CODE within the same server block,
+but it feels much cleaner to me to define each domain in it's own server block.&lt;/p&gt;
+
+&lt;p&gt;This particular app server does not allow access to the admin interface. It will always return a 404 here. &lt;/p&gt;
+
+&lt;h3 id="the-magento-boilerplate"&gt;The Magento Boilerplate&lt;/h3&gt;
+
+&lt;pre class="highlight nginx"&gt;&lt;code&gt;&lt;span class="c1"&gt;# includes/mage
+&lt;/span&gt;&lt;span class="k"&gt;gzip&lt;/span&gt;             &lt;span class="no"&gt;on&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;gzip_min_length&lt;/span&gt;  &lt;span class="mi"&gt;1000&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;gzip_proxied&lt;/span&gt;     &lt;span class="s"&gt;expired&lt;/span&gt; &lt;span class="s"&gt;no-cache&lt;/span&gt; &lt;span class="s"&gt;no-store&lt;/span&gt; &lt;span class="s"&gt;private&lt;/span&gt; &lt;span class="s"&gt;auth&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;gzip_types&lt;/span&gt;       &lt;span class="nc"&gt;text/plain&lt;/span&gt; &lt;span class="nc"&gt;application/xml&lt;/span&gt; &lt;span class="nc"&gt;application/x-javascript&lt;/span&gt; &lt;span class="nc"&gt;text/css&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;gzip_disable&lt;/span&gt;     &lt;span class="s"&gt;"MSIE&lt;/span&gt; &lt;span class="s"&gt;[1-6]&lt;/span&gt;&lt;span class="err"&gt;\&lt;/span&gt;&lt;span class="s"&gt;."&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+&lt;span class="k"&gt;expires&lt;/span&gt;        &lt;span class="no"&gt;off&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;include&lt;/span&gt;        &lt;span class="n"&gt;fastcgi_params&lt;/span&gt;;
+&lt;span class="k"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;HTTPS&lt;/span&gt; &lt;span class="nv"&gt;$fastcgi_https&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;SCRIPT_FILENAME&lt;/span&gt;  &lt;span class="nv"&gt;$document_root&lt;/span&gt;&lt;span class="n"&gt;/index.php&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;MAGE_RUN_TYPE&lt;/span&gt; &lt;span class="s"&gt;store&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/api&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;rewrite&lt;/span&gt; &lt;span class="s"&gt;^/api/rest&lt;/span&gt; &lt;span class="n"&gt;/api?type=rest&lt;/span&gt; &lt;span class="s"&gt;last&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;include&lt;/span&gt;        &lt;span class="s"&gt;fastcgi_params&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; 
+    &lt;span class="kn"&gt;fastcgi_pass&lt;/span&gt; &lt;span class="s"&gt;unix:/dev/shm/php-fastcgi.socket&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;SCRIPT_FILENAME&lt;/span&gt;  &lt;span class="nv"&gt;$document_root&lt;/span&gt;&lt;span class="n"&gt;/api.php&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="p"&gt;=&lt;/span&gt; &lt;span class="n"&gt;/ajax&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;include&lt;/span&gt;        &lt;span class="s"&gt;fastcgi_params&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; 
+    &lt;span class="kn"&gt;fastcgi_pass&lt;/span&gt; &lt;span class="s"&gt;unix:/dev/shm/php-fastcgi.socket&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;SCRIPT_FILENAME&lt;/span&gt;  &lt;span class="nv"&gt;$document_root&lt;/span&gt;&lt;span class="n"&gt;/ajax.php&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;fastcgi_pass&lt;/span&gt; &lt;span class="s"&gt;unix:/dev/shm/php-fastcgi.socket&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="p"&gt;~&lt;/span&gt; &lt;span class="sr"&gt;.php$&lt;/span&gt;              &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/app/&lt;/span&gt;                &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/downloader/&lt;/span&gt;         &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/errors/&lt;/span&gt;             &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/media/&lt;/span&gt;              &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/assets/&lt;/span&gt;             &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/images/&lt;/span&gt;             &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/skin/&lt;/span&gt;               &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/includes/&lt;/span&gt;           &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/lib/&lt;/span&gt;                &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/media/downloadable/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/pkginfo/&lt;/span&gt;            &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/report/config.xml&lt;/span&gt;   &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/shell/&lt;/span&gt;              &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/var/&lt;/span&gt;                &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/.&lt;/span&gt;                   &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="s"&gt;(-f&lt;/span&gt; &lt;span class="nv"&gt;$document_root&lt;/span&gt;&lt;span class="n"&gt;/maintenance.html&lt;/span&gt;&lt;span class="s"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;503&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;error_page&lt;/span&gt; &lt;span class="mi"&gt;503&lt;/span&gt; &lt;span class="s"&gt;@maintenance&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;location&lt;/span&gt; &lt;span class="s"&gt;@maintenance&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;try_files&lt;/span&gt; &lt;span class="n"&gt;/maintenance.html&lt;/span&gt; &lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;error_page&lt;/span&gt; &lt;span class="mi"&gt;404&lt;/span&gt; &lt;span class="n"&gt;/404&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Again, this configuration all seems quite simple and easy to understand. 
+No complex rewrite rules or confusion over which location is matched.&lt;/p&gt;
+
+&lt;p&gt;Every single request to an 'App Server' is routed to PHP-FPM. 
+No static assets or non-PHP files are served.&lt;/p&gt;
+
+&lt;p&gt;In addition, every single request is routed through one of three whitelisted entry points; 
+index.php, api.php or ajax.php.
+ajax.php is a custom entry point that I use for ajax requests that do not load the entire Magento environment.
+Simply remove the location block to revoke access to that entry point. I love the simplicity. &lt;/p&gt;
+
+&lt;p&gt;Note all the locations that return 404. 
+I think it is important to point out that this is not particularly required 
+to prevent access to these files and directories. 
+Remember any location that is not explicitly defined will be served via PHP-FPM using index.php as the entry point, 
+and so will return a Magento 404 
+The point in these 404 locations is simply to increase performance in the case that any request is made 
+to these locations, by circumventing PHP.&lt;/p&gt;
+
+&lt;p&gt;However, to contradict that, there is some config just below that uses the /404 location to serve any 404.
+This will be routed through php as well to serve the Magento 404 page.
+At the moment I'm considering whether to generate a static 404 page during the build process, 
+or create another entry point that doesn't load the entire Magento environment.
+You may want to consider changing this 404 config or removing the 404 locations.&lt;/p&gt;
+
+&lt;h2 id="the-admin-server"&gt;The Admin server&lt;/h2&gt;
+
+&lt;p&gt;Remember we blocked access to the Magento admin at the web server level on the first 'App Server'. 
+We need to define a new server block for our admin server. 
+Note how little new config is needed.&lt;/p&gt;
+
+&lt;pre class="highlight nginx"&gt;&lt;code&gt;&lt;span class="c1"&gt;# sites-available/admin
+&lt;/span&gt;&lt;span class="k"&gt;server&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;listen&lt;/span&gt;         &lt;span class="mi"&gt;80&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;server_name&lt;/span&gt;    &lt;span class="s"&gt;magentoadmin.mydomain.com&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;rewrite&lt;/span&gt;        &lt;span class="s"&gt;^&lt;/span&gt; &lt;span class="s"&gt;https://magentoadmin.mydomain.com&lt;/span&gt;&lt;span class="nv"&gt;$request_uri&lt;/span&gt;&lt;span class="s"&gt;?&lt;/span&gt; &lt;span class="s"&gt;permanent&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="k"&gt;server&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;listen&lt;/span&gt; &lt;span class="nf"&gt;123.123.123.123&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;443&lt;/span&gt; &lt;span class="s"&gt;ssl&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;server_name&lt;/span&gt; &lt;span class="s"&gt;magentoadmin.mydomain.com&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;root&lt;/span&gt; &lt;span class="n"&gt;/var/www/magento/current/public&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="kn"&gt;include&lt;/span&gt; &lt;span class="nc"&gt;includes/ssl&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;include&lt;/span&gt; &lt;span class="nc"&gt;includes/mage&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+    &lt;span class="kn"&gt;auth_basic&lt;/span&gt;            &lt;span class="s"&gt;"mage"&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;auth_basic_user_file&lt;/span&gt;  &lt;span class="s"&gt;htpasswd&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;fastcgi_param&lt;/span&gt;  &lt;span class="s"&gt;MAGE_RUN_CODE&lt;/span&gt; &lt;span class="s"&gt;default&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="p"&gt;=&lt;/span&gt; &lt;span class="n"&gt;/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;301&lt;/span&gt; &lt;span class="s"&gt;https://magentoadmin.mydomain.com/index.php/admin&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It is immediately clear what the differences are. 
+We redirect to the admin path for convenience, and require a HTTP Basic Auth password.&lt;/p&gt;
+
+&lt;p&gt;The password is a quick and convenient way to add a bit of extra security because:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;It means you're not 100% reliant on Magento/PHP to provide security. 
+A lot of attack vectors could be removed if one is refused by the web server. &lt;/li&gt;
+  &lt;li&gt;It can mask the fact that you're even using Magento. &lt;/li&gt;
+  &lt;li&gt;It makes it easy to use tools like Fail2Ban to lock out a brute force attack.&lt;/li&gt;
+  &lt;li&gt;It means that a brute-force won't be using up the server's resources as much as it otherwise would.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id="asset-servers"&gt;Asset Servers&lt;/h2&gt;
+
+&lt;pre class="highlight nginx"&gt;&lt;code&gt;&lt;span class="c1"&gt;# sites-available/assets
+&lt;/span&gt;&lt;span class="k"&gt;server&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;listen&lt;/span&gt; &lt;span class="mi"&gt;80&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;server_name&lt;/span&gt;  &lt;span class="s"&gt;assets.mydomain.com&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;root&lt;/span&gt;  &lt;span class="n"&gt;/var/www/magento/current/public/assets&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;include&lt;/span&gt; &lt;span class="nc"&gt;includes/assets&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/assets/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="kn"&gt;alias&lt;/span&gt; &lt;span class="n"&gt;/var/www/magento/current/public/assets/&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="kn"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/media/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="kn"&gt;alias&lt;/span&gt; &lt;span class="n"&gt;/var/www/magento/current/public/media/&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="kn"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/images/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="kn"&gt;alias&lt;/span&gt; &lt;span class="n"&gt;/var/www/magento/current/public/images/&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="kn"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/skin/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="kn"&gt;alias&lt;/span&gt; &lt;span class="n"&gt;/var/www/magento/current/public/skin/&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="kn"&gt;break&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Again it is immediately clear what we are doing.
+We are 'whitelisting' some directories to serve static assets from on assets.mydomain.com. &lt;/p&gt;
+
+&lt;h3 id="the-asset-boilerplate"&gt;The Asset Boilerplate&lt;/h3&gt;
+
+&lt;p&gt;Add any config you want here to apply to all static assets, 
+e.g. set their expires headers, static GZip, and hotlink protection. 
+You could also explicitly whitelist the file types here too. Or set some CORS headers.  &lt;/p&gt;
+
+&lt;pre class="highlight nginx"&gt;&lt;code&gt;&lt;span class="c1"&gt;# includes/assets
+&lt;/span&gt;&lt;span class="k"&gt;add_header&lt;/span&gt; &lt;span class="s"&gt;"Access-Control-Allow-Origin"&lt;/span&gt; &lt;span class="s"&gt;"*"&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;gzip_static&lt;/span&gt; &lt;span class="no"&gt;on&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;expires&lt;/span&gt; &lt;span class="s"&gt;max&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;add_header&lt;/span&gt; &lt;span class="s"&gt;Cache-Control&lt;/span&gt; &lt;span class="s"&gt;public&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;valid_referers&lt;/span&gt; &lt;span class="s"&gt;none&lt;/span&gt; &lt;span class="s"&gt;blocked&lt;/span&gt; &lt;span class="s"&gt;mydomain.com&lt;/span&gt; &lt;span class="s"&gt;*.mydomain.com&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="s"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$invalid_referer&lt;/span&gt;&lt;span class="s"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kn"&gt;return&lt;/span&gt;   &lt;span class="mi"&gt;403&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id="the-complete-setup"&gt;The complete setup.&lt;/h2&gt;
+
+&lt;p&gt;Put all these files together, and you'll have what 
+I consider to be quite a simple and reasonable Nginx configuration to serve a Magento site from a single box. &lt;/p&gt;
+
+&lt;p&gt;Is there anything that you would add or change? &lt;/p&gt;
+
+&lt;p&gt;P.S. I actually have these files as part of my repository, and change nginx.conf to include them&lt;/p&gt;
+
+&lt;p&gt;P.P.S &lt;strong&gt;Don't forget to setup Magento to use the static asset servers, 
+and make sure to whitelist your sitemaps and any product feeds you may have&lt;/strong&gt;  &lt;/p&gt;
+</content>
+  </entry>
   <entry>
     <title>If Business Logic worked like a business</title>
     <link rel="alternate" href="http://blog.url.com/if-business-logic-worked-like-a-business.html"/>
