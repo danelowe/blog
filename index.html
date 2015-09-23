@@ -38,8 +38,28 @@
 </div>
 </section>
 </header>
-<section class='container' id='content'><h1 style='text-align: center'>A blog on Ruby, Rails and, uh, Magento</h1>
+<section class='container' id='content'><h1 style='text-align: center'>A blog on Ruby and Magento</h1>
 <div class='post_list'>
+<div class='post' data-href='/how-time-fields-work-in-magento.html'>
+<div class='data'>
+<span class='date'>23 September 2015</span>
+<div class='tags_list'>
+<a href="/tags/magento.html">Magento</a>
+</div>
+</div>
+<div class='intro'>
+<h2><a href="/how-time-fields-work-in-magento.html">How Time Fields work in Magento</a></h2>
+<p>Magento stores time values in the system config database table as 
+comma-separated values for hours, minutes, and seconds, 
+but it displays the configuration options as three dropdown boxes.</p>
+
+<p>I've often wondered what class controlled this behaviour, 
+thinking there would be some canonical way of creating config values composed of multiple HTMl fields.</p>
+
+<p>As it turns out, this behaviour is not specific to time fields. 
+<code>core/config_data</code> models just naively serialize arrays to comma-separated values...</p>
+</div>
+</div>
 <div class='post' data-href='/simple-and-robust-nginx-config-for-magento.html'>
 <div class='data'>
 <span class='date'> 5 February 2015</span>
@@ -135,6 +155,7 @@ Sorting, for example, is designed...</p>
 <div class='column'>
 <h2>Recent Articles</h2>
 <ol>
+<li><a href="/how-time-fields-work-in-magento.html">How Time Fields work in Magento</a></li>
 <li><a href="/simple-and-robust-nginx-config-for-magento.html">Simple and Robust Nginx config for Magento</a></li>
 <li><a href="/if-business-logic-worked-like-a-business.html">If Business Logic worked like a business</a></li>
 <li><a href="/bulk-updating-eav-attributes-in-magento.html">Bulk updating EAV attributes in Magento</a></li>
@@ -144,7 +165,7 @@ Sorting, for example, is designed...</p>
 <div class='column'>
 <h2>Tags</h2>
 <ol>
-<li><a href="/tags/magento.html">Magento (3)</a></li>
+<li><a href="/tags/magento.html">Magento (4)</a></li>
 <li><a href="/tags/ruby.html">Ruby (1)</a></li>
 <li><a href="/tags/patterns.html">Patterns (1)</a></li>
 <li><a href="/tags/sysadmin.html">Sysadmin (1)</a></li>

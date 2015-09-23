@@ -5,16 +5,85 @@
   <id>http://blog.url.com/</id>
   <link href="http://blog.url.com/"/>
   <link href="http://blog.url.com/feed.xml" rel="self"/>
-  <updated>2015-02-05T13:02:00+00:00</updated>
+  <updated>2015-09-23T10:59:00+01:00</updated>
   <author>
     <name>Blog Author</name>
   </author>
+  <entry>
+    <title>How Time Fields work in Magento</title>
+    <link rel="alternate" href="http://blog.url.com/how-time-fields-work-in-magento.html"/>
+    <id>http://blog.url.com/how-time-fields-work-in-magento.html</id>
+    <published>2015-09-23T10:59:00+01:00</published>
+    <updated>2015-09-23T11:18:53+01:00</updated>
+    <author>
+      <name>Article Author</name>
+    </author>
+    <content type="html">&lt;p&gt;Magento stores time values in the system config database table as 
+comma-separated values for hours, minutes, and seconds, 
+but it displays the configuration options as three dropdown boxes.&lt;/p&gt;
+
+&lt;p&gt;I've often wondered what class controlled this behaviour, 
+thinking there would be some canonical way of creating config values composed of multiple HTMl fields.&lt;/p&gt;
+
+&lt;p&gt;As it turns out, this behaviour is not specific to time fields. 
+&lt;code&gt;core/config_data&lt;/code&gt; models just naively serialize arrays to comma-separated values before saving.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="c1"&gt;# Mage_Core_Model_Resource_Config_Data
+&lt;/span&gt;&lt;span class="sd"&gt;/**
+ * Convert array to comma separated value
+ *
+ * @param Mage_Core_Model_Abstract $object
+ * @return Mage_Core_Model_Resource_Config_Data
+ */&lt;/span&gt;
+&lt;span class="k"&gt;protected&lt;/span&gt; &lt;span class="k"&gt;function&lt;/span&gt; &lt;span class="nf"&gt;_beforeSave&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;Mage_Core_Model_Abstract&lt;/span&gt; &lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getId&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;_checkUnique&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;is_array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getValue&lt;/span&gt;&lt;span class="p"&gt;()))&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;setValue&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;join&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;','&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getValue&lt;/span&gt;&lt;span class="p"&gt;()));&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="k"&gt;parent&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="na"&gt;_beforeSave&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$object&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;And the form field class just deserializes it.&lt;/p&gt;
+
+&lt;pre class="highlight php"&gt;&lt;code&gt;&lt;span class="cp"&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class="c1"&gt;# Varien_Data_Form_Element_Time#getElementHtml()
+&lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt; &lt;span class="nv"&gt;$value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="na"&gt;getValue&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="nv"&gt;$values&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;explode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;','&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nv"&gt;$value&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt; &lt;span class="nb"&gt;is_array&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$values&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="nb"&gt;count&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$values&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;3&lt;/span&gt; &lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="nv"&gt;$value_hrs&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$values&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;];&lt;/span&gt;
+        &lt;span class="nv"&gt;$value_min&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$values&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;];&lt;/span&gt;
+        &lt;span class="nv"&gt;$value_sec&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$values&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;];&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Not the greatest implementation, and certainly no silver bullet for creating composed config fields 
+that know how to serialize/deserialize the data.
+It's probably best to just create a backend model for these complex fields.&lt;/p&gt;
+
+&lt;p&gt;When saving config data in the admin:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;The controller grabs a singleton of &lt;code&gt;adminhtml/config_data&lt;/code&gt;&lt;/li&gt;
+  &lt;li&gt;That singleton then creates a &lt;code&gt;$saveTransaction&lt;/code&gt; and &lt;code&gt;$deleteTransaction&lt;/code&gt;, 
+loops through the data and populates each with an array of baackend models for each field.&lt;/li&gt;
+  &lt;li&gt;When the transactions are committed, they just call save on each backend model in turn.&lt;/li&gt;
+&lt;/ul&gt;
+
+</content>
+  </entry>
   <entry>
     <title>Simple and Robust Nginx config for Magento</title>
     <link rel="alternate" href="http://blog.url.com/simple-and-robust-nginx-config-for-magento.html"/>
     <id>http://blog.url.com/simple-and-robust-nginx-config-for-magento.html</id>
     <published>2015-02-05T13:02:00+00:00</published>
-    <updated>2015-02-05T14:40:06+00:00</updated>
+    <updated>2015-02-16T09:29:43+00:00</updated>
     <author>
       <name>Article Author</name>
     </author>
@@ -202,6 +271,10 @@ Note how little new config is needed.&lt;/p&gt;
     &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="p"&gt;=&lt;/span&gt; &lt;span class="n"&gt;/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
         &lt;span class="kn"&gt;return&lt;/span&gt; &lt;span class="mi"&gt;301&lt;/span&gt; &lt;span class="s"&gt;https://magentoadmin.mydomain.com/index.php/admin&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
     &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kn"&gt;location&lt;/span&gt; &lt;span class="n"&gt;/index.php/mage/cms_wysiwyg_images/upload/&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="kn"&gt;auth_basic&lt;/span&gt; &lt;span class="no"&gt;off&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="kn"&gt;fastcgi_pass&lt;/span&gt; &lt;span class="s"&gt;unix:/dev/shm/php-fastcgi.socket&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
 &lt;span class="p"&gt;}&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;
 
@@ -217,6 +290,9 @@ A lot of attack vectors could be removed if one is refused by the web server. &l
   &lt;li&gt;It makes it easy to use tools like Fail2Ban to lock out a brute force attack.&lt;/li&gt;
   &lt;li&gt;It means that a brute-force won't be using up the server's resources as much as it otherwise would.&lt;/li&gt;
 &lt;/ul&gt;
+
+&lt;p&gt;Also, note that we disable HTTP Basic Auth for the image uploader.
+Otherwise the flash image uploader may not work. &lt;/p&gt;
 
 &lt;h2 id="asset-servers"&gt;Asset Servers&lt;/h2&gt;
 
@@ -278,8 +354,8 @@ I consider to be quite a simple and reasonable Nginx configuration to serve a Ma
 
 &lt;p&gt;P.S. I actually have these files as part of my repository, and change nginx.conf to include them&lt;/p&gt;
 
-&lt;p&gt;P.P.S &lt;strong&gt;Don't forget to setup Magento to use the static asset servers, 
-and make sure to whitelist your sitemaps and any product feeds you may have&lt;/strong&gt;  &lt;/p&gt;
+&lt;p&gt;P.P.S &lt;strong&gt;Don't forget to setup Magento to use the static asset servers, ensure your CORS setup works, 
+and make sure to whitelist your sitemaps and any product feeds or google verification pages you may have&lt;/strong&gt;  &lt;/p&gt;
 </content>
   </entry>
   <entry>

@@ -232,6 +232,10 @@ Note how little new config is needed.</p>
     <span class="kn">location</span> <span class="p">=</span> <span class="n">/</span> <span class="p">{</span>
         <span class="kn">return</span> <span class="mi">301</span> <span class="s">https://magentoadmin.mydomain.com/index.php/admin</span><span class="p">;</span>
     <span class="p">}</span>
+    <span class="kn">location</span> <span class="n">/index.php/mage/cms_wysiwyg_images/upload/</span> <span class="p">{</span>
+        <span class="kn">auth_basic</span> <span class="no">off</span><span class="p">;</span>
+        <span class="kn">fastcgi_pass</span> <span class="s">unix:/dev/shm/php-fastcgi.socket</span><span class="p">;</span>
+    <span class="p">}</span>
 <span class="p">}</span>
 </code></pre>
 
@@ -247,6 +251,9 @@ A lot of attack vectors could be removed if one is refused by the web server. </
   <li>It makes it easy to use tools like Fail2Ban to lock out a brute force attack.</li>
   <li>It means that a brute-force won't be using up the server's resources as much as it otherwise would.</li>
 </ul>
+
+<p>Also, note that we disable HTTP Basic Auth for the image uploader.
+Otherwise the flash image uploader may not work. </p>
 
 <h2 id="asset-servers">Asset Servers</h2>
 
@@ -308,8 +315,8 @@ I consider to be quite a simple and reasonable Nginx configuration to serve a Ma
 
 <p>P.S. I actually have these files as part of my repository, and change nginx.conf to include them</p>
 
-<p>P.P.S <strong>Don't forget to setup Magento to use the static asset servers, 
-and make sure to whitelist your sitemaps and any product feeds you may have</strong>  </p>
+<p>P.P.S <strong>Don't forget to setup Magento to use the static asset servers, ensure your CORS setup works, 
+and make sure to whitelist your sitemaps and any product feeds or google verification pages you may have</strong>  </p>
 
 <div id="disqus_thread"></div>
 <script type="text/javascript">
@@ -346,6 +353,7 @@ and make sure to whitelist your sitemaps and any product feeds you may have</str
 <div class='column'>
 <h2>Recent Articles</h2>
 <ol>
+<li><a href="/how-time-fields-work-in-magento.html">How Time Fields work in Magento</a></li>
 <li><a href="/simple-and-robust-nginx-config-for-magento.html">Simple and Robust Nginx config for Magento</a></li>
 <li><a href="/if-business-logic-worked-like-a-business.html">If Business Logic worked like a business</a></li>
 <li><a href="/bulk-updating-eav-attributes-in-magento.html">Bulk updating EAV attributes in Magento</a></li>
@@ -355,7 +363,7 @@ and make sure to whitelist your sitemaps and any product feeds you may have</str
 <div class='column'>
 <h2>Tags</h2>
 <ol>
-<li><a href="/tags/magento.html">Magento (3)</a></li>
+<li><a href="/tags/magento.html">Magento (4)</a></li>
 <li><a href="/tags/ruby.html">Ruby (1)</a></li>
 <li><a href="/tags/patterns.html">Patterns (1)</a></li>
 <li><a href="/tags/sysadmin.html">Sysadmin (1)</a></li>
