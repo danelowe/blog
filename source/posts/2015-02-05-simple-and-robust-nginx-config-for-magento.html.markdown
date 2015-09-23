@@ -187,6 +187,10 @@ server {
     location = / {
         return 301 https://magentoadmin.mydomain.com/index.php/admin;
     }
+    location /index.php/mage/cms_wysiwyg_images/upload/ {
+        auth_basic off;
+        fastcgi_pass unix:/dev/shm/php-fastcgi.socket;
+    }
 }
 ~~~
 
@@ -200,6 +204,9 @@ A lot of attack vectors could be removed if one is refused by the web server.
 * It can mask the fact that you're even using Magento. 
 * It makes it easy to use tools like Fail2Ban to lock out a brute force attack.
 * It means that a brute-force won't be using up the server's resources as much as it otherwise would.
+
+Also, note that we disable HTTP Basic Auth for the image uploader.
+Otherwise the flash image uploader may not work. 
 
 ## Asset Servers
 
@@ -263,5 +270,5 @@ Is there anything that you would add or change?
 
 P.S. I actually have these files as part of my repository, and change nginx.conf to include them
 
-P.P.S **Don't forget to setup Magento to use the static asset servers, 
-and make sure to whitelist your sitemaps and any product feeds you may have**  
+P.P.S **Don't forget to setup Magento to use the static asset servers, ensure your CORS setup works, 
+and make sure to whitelist your sitemaps and any product feeds or google verification pages you may have**  
