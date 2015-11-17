@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<head>
+<meta charset='utf-8'>
+<meta content='IE=edge,chrome=1' http_equiv='X-UA-Compatible'>
+<meta content='width=device-width, initial-scale=1.0' name='viewport'>
+<link href='https://fonts.googleapis.com/css?family=Oxygen:300,400,700' rel='stylesheet' type='text/css'>
+<link href='apple-touch-icon-152x152-precomposed.png' rel='apple-touch-icon' sizes='152x152'>
+<link href='apple-touch-icon-144x144-precomposed.png' rel='apple-touch-icon' sizes='144x144'>
+<link href='apple-touch-icon-114x114-precomposed.png' rel='apple-touch-icon' sizes='114x114'>
+<link href='apple-touch-icon-72x72-precomposed.png' rel='apple-touch-icon' sizes='72x72'>
+<link href='apple-touch-icon-precomposed.png' rel='apple-touch-icon'>
+<link href='favicon.png' rel='shortcut icon'>
+<link href='favicon.ico' rel='icon' type='image/ico'>
+<title>Magento's Flat Catalog Remembers Store ID</title>
+<link rel="alternate" type="application/atom+xml" title="Atom Feed" href="/feed.xml" />
+<link href="/stylesheets/all-5c3f3084.css" rel="stylesheet" type="text/css" />
+<script src="/javascripts/all-b51db3d4.js" type="text/javascript"></script>
+</head>
+<body class='magento-flat-catalog-remembers-store-id'>
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+  
+  ga('create', 'UA-24341865-3', 'danelowe.name');
+  ga('send', 'pageview');
+</script>
+
+<header>
+<section class='container'>
+<strong><a href="/">Dane Lowe</a></strong>
+<div class='tags_list'>
+<a href="/tags/magento.html">Magento</a>
+<a href="/tags/ruby.html">Ruby</a>
+<a href="/tags/patterns.html">Patterns</a>
+<a href="/tags/sysadmin.html">Sysadmin</a>
+</div>
+</section>
+</header>
+<section class='container' id='content'><div class='post'>
+<div class='data'>
+<span class='date'>14 November 2015</span>
+<div class='tags_list'>
+<a href="/tags/magento.html">Magento</a>
+</div>
+</div>
+<div class='content'>
+<h1>Magento's Flat Catalog Remembers Store ID</h1>
+<p>If you're using store emulation, and loading product collections while emulating a store,
+you need to be aware of one massive gotcha.</p>
+
+<p><strong>Magento keeps the store id for a flat collection in a <em>singleton</em></strong></p>
+
+<p>Consider the following code: </p>
+
+<pre class="highlight php"><code><span class="cp">&lt;?php</span> 
+<span class="k">public</span> <span class="k">function</span> <span class="nf">reindexAll</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">foreach</span> <span class="p">(</span><span class="nx">Mage</span><span class="o">::</span><span class="na">app</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">getStores</span><span class="p">()</span> <span class="k">as</span> <span class="nv">$_store</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">_reindex</span><span class="p">(</span><span class="nv">$_store</span><span class="o">-&gt;</span><span class="na">getId</span><span class="p">());</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">protected</span> <span class="k">function</span> <span class="nf">_reindex</span><span class="p">(</span><span class="nv">$storeId</span><span class="p">,</span> <span class="nv">$products</span> <span class="o">=</span> <span class="kc">null</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="nv">$initialEnvironment</span> <span class="o">=</span> <span class="nx">Mage</span><span class="o">::</span><span class="na">getSingleton</span><span class="p">(</span><span class="s1">'core/app_emulation'</span><span class="p">)</span><span class="o">-&gt;</span><span class="na">startEnvironmentEmulation</span><span class="p">(</span><span class="nv">$storeId</span><span class="p">);</span>
+    <span class="nv">$products</span> <span class="o">=</span> <span class="nx">Mage</span><span class="o">::</span><span class="na">getResourceModel</span><span class="p">(</span><span class="s1">'catalog/product_collection'</span><span class="p">)</span>
+        <span class="o">-&gt;</span><span class="na">setStoreId</span><span class="p">(</span><span class="nv">$storeId</span><span class="p">)</span>
+        <span class="o">-&gt;</span><span class="na">addStoreFilter</span><span class="p">(</span><span class="nv">$storeId</span><span class="p">)</span>
+    <span class="c1">// Do other stuff here.
+</span>    <span class="nx">Mage</span><span class="o">::</span><span class="na">getSingleton</span><span class="p">(</span><span class="s1">'core/app_emulation'</span><span class="p">)</span><span class="o">-&gt;</span><span class="na">stopEnvironmentEmulation</span><span class="p">(</span><span class="nv">$initialEnvironment</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre>
+
+<p>If the flat catalog is enabled, Magento will try to load products from the first store's flat catalog table
+<strong>for all subsequent collections created in the same request</strong>.</p>
+
+<p>Why? Because of this: </p>
+
+<pre class="highlight php"><code><span class="cp">&lt;?php</span>
+<span class="k">abstract</span> <span class="k">class</span> <span class="nc">Mage_Eav_Model_Entity_Collection_Abstract</span> <span class="k">extends</span> <span class="nx">Varien_Data_Collection_Db</span>
+<span class="p">{</span>
+<span class="c1">#...
+</span>    <span class="sd">/**
+     * Standard resource collection initalization
+     *
+     * @param string $model
+     * @return Mage_Core_Model_Mysql4_Collection_Abstract
+     */</span>
+    <span class="k">protected</span> <span class="k">function</span> <span class="nf">_init</span><span class="p">(</span><span class="nv">$model</span><span class="p">,</span> <span class="nv">$entityModel</span> <span class="o">=</span> <span class="kc">null</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">setItemObjectClass</span><span class="p">(</span><span class="nx">Mage</span><span class="o">::</span><span class="na">getConfig</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">getModelClassName</span><span class="p">(</span><span class="nv">$model</span><span class="p">));</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$entityModel</span> <span class="o">===</span> <span class="kc">null</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nv">$entityModel</span> <span class="o">=</span> <span class="nv">$model</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="nv">$entity</span> <span class="o">=</span> <span class="nx">Mage</span><span class="o">::</span><span class="na">getResourceSingleton</span><span class="p">(</span><span class="nv">$entityModel</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">setEntity</span><span class="p">(</span><span class="nv">$entity</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="nv">$this</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="c1">#...
+</span></code></pre>
+
+<p>When a flat collection is initialized, <code>entityModel</code> is <code>'catalog/product_flat'</code>. 
+The 'entity' on the collection is set to a singleton of that type. </p>
+
+<p>Of course, when a singleton is retrieved, it will always return the same instance within the same request. </p>
+
+<p>When we load the collection, and initialise the select, it gets the flat table name from the entity. 
+Given that the entity will always be the first instance constructed in the request, 
+it will always use the same table name throughout the request.  </p>
+
+<pre class="highlight php"><code><span class="cp">&lt;?php</span>
+<span class="k">class</span> <span class="nc">Mage_Catalog_Model_Resource_Product_Collection</span> <span class="k">extends</span> <span class="nx">Mage_Catalog_Model_Resource_Collection_Abstract</span>
+<span class="p">{</span>
+<span class="c1">#...
+</span>    <span class="sd">/**
+     * Initialize collection select
+     * Redeclared for remove entity_type_id condition
+     * in catalog_product_entity we store just products
+     *
+     * @return Mage_Catalog_Model_Resource_Product_Collection
+     */</span>
+    <span class="k">protected</span> <span class="k">function</span> <span class="nf">_initSelect</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">isEnabledFlat</span><span class="p">())</span> <span class="p">{</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">getSelect</span><span class="p">()</span>
+                <span class="o">-&gt;</span><span class="na">from</span><span class="p">(</span><span class="k">array</span><span class="p">(</span><span class="nx">self</span><span class="o">::</span><span class="na">MAIN_TABLE_ALIAS</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">getEntity</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">getFlatTableName</span><span class="p">()),</span> <span class="kc">null</span><span class="p">)</span>
+                <span class="o">-&gt;</span><span class="na">where</span><span class="p">(</span><span class="s1">'e.status = ?'</span><span class="p">,</span> <span class="k">new</span> <span class="nx">Zend_Db_Expr</span><span class="p">(</span><span class="nx">Mage_Catalog_Model_Product_Status</span><span class="o">::</span><span class="na">STATUS_ENABLED</span><span class="p">));</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">addAttributeToSelect</span><span class="p">(</span><span class="k">array</span><span class="p">(</span><span class="s1">'entity_id'</span><span class="p">,</span> <span class="s1">'type_id'</span><span class="p">,</span> <span class="s1">'attribute_set_id'</span><span class="p">));</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">getFlatHelper</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">isAddChildData</span><span class="p">())</span> <span class="p">{</span>
+                <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">getSelect</span><span class="p">()</span>
+                    <span class="o">-&gt;</span><span class="na">where</span><span class="p">(</span><span class="s1">'e.is_child = ?'</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+                <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">addAttributeToSelect</span><span class="p">(</span><span class="k">array</span><span class="p">(</span><span class="s1">'child_id'</span><span class="p">,</span> <span class="s1">'is_child'</span><span class="p">));</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">getSelect</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">from</span><span class="p">(</span><span class="k">array</span><span class="p">(</span><span class="nx">self</span><span class="o">::</span><span class="na">MAIN_TABLE_ALIAS</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">getEntity</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">getEntityTable</span><span class="p">()));</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="c1">#...
+</span><span class="p">}</span>
+</code></pre>
+
+<p>This feels like a very significant bug to me, 
+but there is one thing stopping it from entirely preventing multi-store setups. 
+PHP generally loads classes and removes them from memory once per request. 
+So singletons only last for a single request.</p>
+
+<p>Its not likely that a customer would be using two different stores in a single HTTP request, so it works. </p>
+
+<p>Which leads to the solution:</p>
+
+<ul>
+  <li>Try not to load collections when emulating stores. Instead, load the collection, then start store emulation. </li>
+  <li>If you must load a collection during store emulation, 
+<a href="/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html">load it as an EAV collection</a></li>
+</ul>
+
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+//<![CDATA[
+                  var disqus_shortname = 'danelowe';
+          
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+//]]>
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+<script type="text/javascript">
+//<![CDATA[
+    var disqus_shortname = 'danelowe';
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+//]]>
+</script>
+
+</div>
+</div>
+</section>
+<footer>
+<section class='container'>
+<div class='column'>
+<h2>Recent Articles</h2>
+<ol>
+<li><a href="/magento-flat-catalog-remembers-store-id.html">Magento's Flat Catalog Remembers Store ID</a></li>
+<li><a href="/how-time-fields-work-in-magento.html">How Time Fields work in Magento</a></li>
+<li><a href="/simple-and-robust-nginx-config-for-magento.html">Simple and Robust Nginx config for Magento</a></li>
+<li><a href="/if-business-logic-worked-like-a-business.html">If Business Logic worked like a business</a></li>
+<li><a href="/bulk-updating-eav-attributes-in-magento.html">Bulk updating EAV attributes in Magento</a></li>
+<li><a href="/how-to-get-an-eav-product-collection-when-flat-catalog-is-enabled.html">How to get an EAV product collection when Flat Catalog is Enabled</a></li>
+</ol>
+</div>
+<div class='column'>
+<h2>Tags</h2>
+<ol>
+<li><a href="/tags/magento.html">Magento (5)</a></li>
+<li><a href="/tags/ruby.html">Ruby (1)</a></li>
+<li><a href="/tags/patterns.html">Patterns (1)</a></li>
+<li><a href="/tags/sysadmin.html">Sysadmin (1)</a></li>
+</ol>
+</div>
+<div class='column'>
+<h2>About</h2>
+<p>Hi. I'm Dane, a web developer that works with Magento, Ruby and HTML/CSS/JS</p>
+<p>
+<span class='e'>dane</span>
+</p>
+</div>
+</section>
+</footer>
+</body>
